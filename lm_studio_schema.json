@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "say",
+        "move",
+        "move_to",
+        "interact",
+        "transfer_item"
+      ]
+    },
+    "args": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "direction": {
+              "type": "string",
+              "enum": [
+                "N",
+                "E",
+                "S",
+                "W"
+              ]
+            },
+            "distance": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 5.0,
+              "description": "Distance in tiles (0.5=short, 1.0=medium, 3.0=long)"
+            }
+          },
+          "required": [
+            "direction",
+            "distance"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "integer"
+            },
+            "y": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "entity_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entity_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "entity_id": {
+              "type": "string"
+            },
+            "item_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entity_id",
+            "item_id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": [
+    "action",
+    "args"
+  ],
+  "additionalProperties": false
+}

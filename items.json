@@ -1,0 +1,103 @@
+{
+  "weapons": {
+    "iron_sword": {
+      "name": "Iron Sword",
+      "type": "weapon",
+      "damage": 10,
+      "value": 50,
+      "description": "A sturdy iron blade",
+      "color": [150, 150, 150]
+    },
+    "steel_sword": {
+      "name": "Steel Sword", 
+      "type": "weapon",
+      "damage": 15,
+      "value": 100,
+      "description": "A sharp steel blade",
+      "color": [200, 200, 200]
+    },
+    "wooden_bow": {
+      "name": "Wooden Bow",
+      "type": "weapon",
+      "damage": 8,
+      "value": 30,
+      "description": "A simple wooden bow",
+      "color": [139, 69, 19]
+    }
+  },
+  "armor": {
+    "leather_armor": {
+      "name": "Leather Armor",
+      "type": "armor",
+      "defense": 5,
+      "value": 40,
+      "description": "Basic leather protection",
+      "color": [139, 69, 19]
+    },
+    "chain_mail": {
+      "name": "Chain Mail",
+      "type": "armor", 
+      "defense": 10,
+      "value": 80,
+      "description": "Interlocked metal rings",
+      "color": [150, 150, 150]
+    },
+    "plate_armor": {
+      "name": "Plate Armor",
+      "type": "armor",
+      "defense": 20,
+      "value": 200,
+      "description": "Heavy metal plates",
+      "color": [100, 100, 100]
+    }
+  },
+  "potions": {
+    "health_potion": {
+      "name": "Health Potion",
+      "type": "consumable",
+      "heal": 25,
+      "value": 20,
+      "description": "Restores health",
+      "color": [255, 0, 0]
+    },
+    "mana_potion": {
+      "name": "Mana Potion",
+      "type": "consumable", 
+      "mana": 30,
+      "value": 25,
+      "description": "Restores magical energy",
+      "color": [0, 0, 255]
+    },
+    "stamina_potion": {
+      "name": "Stamina Potion",
+      "type": "consumable",
+      "stamina": 40,
+      "value": 15,
+      "description": "Restores stamina",
+      "color": [0, 255, 0]
+    }
+  },
+  "misc": {
+    "gold_coin": {
+      "name": "Gold Coin",
+      "type": "currency",
+      "value": 1,
+      "description": "Standard currency",
+      "color": [255, 215, 0]
+    },
+    "rope": {
+      "name": "Rope",
+      "type": "tool",
+      "value": 5,
+      "description": "Useful for climbing",
+      "color": [139, 69, 19]
+    },
+    "torch": {
+      "name": "Torch",
+      "type": "tool",
+      "value": 3,
+      "description": "Provides light",
+      "color": [255, 140, 0]
+    }
+  }
+}

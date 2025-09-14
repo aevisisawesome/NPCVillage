@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": ["say", "move", "move_to", "interact", "transfer_item"]
+    },
+    "args": {
+      "type": "object",
+      "properties": {
+        "text": {"type": "string"},
+        "direction": {"type": "string", "enum": ["N", "E", "S", "W"]},
+        "distance": {"type": "number", "minimum": 0.1, "maximum": 5.0},
+        "x": {"type": "integer"},
+        "y": {"type": "integer"},
+        "entity_id": {"type": "string"},
+        "item_id": {"type": "string"}
+      }
+    }
+  },
+  "required": ["action", "args"],
+  "additionalProperties": false
+}

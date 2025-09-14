@@ -1,0 +1,1 @@
+# NPC module for LLM-driven behavior

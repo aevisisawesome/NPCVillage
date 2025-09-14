@@ -459,6 +459,11 @@ class GameWithLLMNPC:
     def run(self):
         print("Starting Zelda game with LLM-driven NPC...")
         print("Make sure your local LLM server is running at http://127.0.0.1:1234")
+        
+        # Show LLM configuration
+        from llm_config import print_config_info
+        print_config_info()
+        
         print("Walk near the shopkeeper and press Enter to talk!")
         
         while self.running:

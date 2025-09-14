@@ -49,7 +49,7 @@ class LLMClient:
         # Build user message
         user_message = f"OBSERVATION:\n{obs_json}"
         if memory:
-            user_message = f"MEMORY:\n{memory}\n\n{user_message}"
+            user_message = f"{memory}\n\n{user_message}"
         
         # *** DEBUG: Log the complete user message being sent to LLM ***
         print("=" * 80)

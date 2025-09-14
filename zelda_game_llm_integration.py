@@ -10,6 +10,7 @@ import math
 import time
 from npc.controller import NPCController
 from npc.observation import build_observation
+from llm_config import get_llm_config, print_config_info
 
 
 # Modify the existing NPC class to integrate with LLM controller
@@ -55,8 +56,11 @@ class LLMDrivenNPC:
         self.skin_color = (255, 220, 177)
         self.pants_color = (139, 69, 19)
         
-        # LLM Controller
-        self.llm_controller = NPCController(self)
+        # LLM Controller - use configuration
+        config = get_llm_config()
+        self.llm_controller = NPCController(self, 
+                                          llm_endpoint=config["endpoint"],
+                                          use_tool_calls=config["use_tool_calls"])
         
         # Game integration
         self.last_player_speech = None

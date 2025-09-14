@@ -8,15 +8,23 @@ import math
 from typing import Dict, Any, Optional, List, Tuple
 from .observation import build_observation
 from .llm_client import LLMClient
+from .llm_client_tool_calls import LLMClientToolCalls
 from .actions import parse_action, Action
 
 
 class NPCController:
     """Controls LLM-driven NPC behavior"""
     
-    def __init__(self, npc, llm_endpoint: str = None):
+    def __init__(self, npc, llm_endpoint: str = None, use_tool_calls: bool = True):
         self.npc = npc
-        self.llm_client = LLMClient(llm_endpoint)
+        self.use_tool_calls = use_tool_calls
+        
+        if use_tool_calls:
+            self.llm_client = LLMClientToolCalls(llm_endpoint)
+            print("DEBUG: Using LLM client with tool calls")
+        else:
+            self.llm_client = LLMClient(llm_endpoint)
+            print("DEBUG: Using LLM client with JSON parsing")
         
         # Decision timing
         self.decision_interval = 4000  # ms between decisions (4-10 game ticks at 60fps)
@@ -27,6 +35,10 @@ class NPCController:
         self.goals = ["greet player"]
         self.cooldowns = {"move": 0, "interact": 0}
         self.memory = ""
+        
+        # Dialogue history tracking
+        self.dialogue_history = []
+        self.max_dialogue_history = 10  # Keep last 10 exchanges
         
         # Error handling
         self.consecutive_errors = 0
@@ -168,11 +180,15 @@ class NPCController:
             player_speech = observation.get("player", {}).get("last_said")
             if player_speech:
                 print(f"DEBUG: Player said: '{player_speech}' - LLM making decision...")
+                # Track player speech in dialogue history
+                self._add_to_dialogue_history("Player", player_speech)
             else:
                 print(f"DEBUG: Autonomous movement continuation...")
             
-            # Step 2: Get LLM decision
-            raw_response, llm_error = self.llm_client.decide(observation, self.memory)
+            # Step 2: Get LLM decision with dialogue history
+            dialogue_context = self._build_dialogue_context()
+            combined_memory = f"{self.memory}\n\n{dialogue_context}" if self.memory else dialogue_context
+            raw_response, llm_error = self.llm_client.decide(observation, combined_memory)
             
             if llm_error:
                 self.last_result = llm_error
@@ -251,6 +267,8 @@ class NPCController:
         try:
             # Make NPC say the text
             self.npc.say(args.text)
+            # Track NPC speech in dialogue history
+            self._add_to_dialogue_history(self.npc.name, args.text)
             return "ok"
         except Exception as e:
             return f"invalid: Say failed - {str(e)}"
@@ -575,6 +593,45 @@ class NPCController:
     def idle_behavior_enabled(self):
         """Check if idle behavior is currently enabled"""
         return self._idle_behavior_enabled
+    
+    def _add_to_dialogue_history(self, speaker: str, message: str):
+        """Add a dialogue entry to history"""
+        import time
+        
+        entry = {
+            "speaker": speaker,
+            "message": message,
+            "timestamp": time.time()
+        }
+        
+        self.dialogue_history.append(entry)
+        
+        # Keep only the most recent entries
+        if len(self.dialogue_history) > self.max_dialogue_history:
+            self.dialogue_history = self.dialogue_history[-self.max_dialogue_history:]
+        
+        print(f"DEBUG: Added to dialogue history: {speaker}: '{message}'")
+    
+    def _build_dialogue_context(self) -> str:
+        """Build dialogue context string for LLM"""
+        if not self.dialogue_history:
+            return ""
+        
+        context_lines = ["RECENT CONVERSATION:"]
+        
+        for entry in self.dialogue_history[-6:]:  # Last 6 exchanges
+            speaker = entry["speaker"]
+            message = entry["message"]
+            context_lines.append(f"{speaker}: \"{message}\"")
+        
+        context = "\n".join(context_lines)
+        print(f"DEBUG: Dialogue context being sent to LLM:\n{context}")
+        return context
+    
+    def clear_dialogue_history(self):
+        """Clear the dialogue history"""
+        self.dialogue_history = []
+        print("DEBUG: Dialogue history cleared")
 
 
 def test_npc_controller():

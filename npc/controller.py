@@ -10,6 +10,7 @@ from .observation import build_observation
 from .llm_client import LLMClient
 from .llm_client_tool_calls import LLMClientToolCalls
 from .actions import parse_action, Action
+from .navigation import HierarchicalNavigator, PathQuery
 
 
 class NPCController:
@@ -45,8 +46,9 @@ class NPCController:
         self.max_consecutive_errors = 3
         self.error_backoff_time = 2000  # ms to wait after errors
         
-        # Pathfinding for move_to
-        self.current_path = []
+        # Hierarchical navigation system
+        self.navigator: Optional[HierarchicalNavigator] = None
+        self.current_waypoints: List[Tuple[float, float]] = []
         self.path_target = None
         
         # Behavior settings
@@ -70,8 +72,8 @@ class NPCController:
         # Continue active movement sequences (this is key!)
         if self.active_movement and self.movement_steps_remaining > 0:
             time_since_last = current_time - self.last_decision_time
-            # Continue movement every 200ms (faster than normal decisions)
-            return time_since_last >= 200
+            # Continue movement every 100ms (faster than normal decisions)
+            return time_since_last >= 100
         
         # For now, only make decisions when player speaks (unless actively moving)
         if not self._idle_behavior_enabled:
@@ -148,8 +150,14 @@ class NPCController:
                 
                 elif self.active_movement == "move_to":
                     from .actions import MoveToArgs
-                    args = MoveToArgs(x=self.movement_target[0] // 32, y=self.movement_target[1] // 32)
-                    result = self._continue_move_to(args, engine_state)
+                    if self.movement_target:
+                        args = MoveToArgs(x=self.movement_target[0] // 32, y=self.movement_target[1] // 32)
+                        result = self._continue_move_to(args, engine_state)
+                    else:
+                        # No target, stop movement
+                        self.active_movement = None
+                        self.movement_steps_remaining = 0
+                        result = "ok"
                     
                     # Update state
                     self.last_result = result
@@ -345,7 +353,7 @@ class NPCController:
             return "blocked:wall"
     
     def _execute_move_to(self, args, engine_state: Dict[str, Any]) -> str:
-        """Execute move_to action with autonomous movement to target"""
+        """Execute move_to action with hierarchical navigation"""
         
         # Check move cooldown
         if self.cooldowns["move"] > 0:
@@ -366,17 +374,55 @@ class NPCController:
         
         if distance < 16:  # Already at target (within half a tile)
             print("DEBUG: Already at target")
+            self.current_waypoints = []
             return "ok"
+        
+        # Use hierarchical navigation if available
+        if self.navigator:
+            query = PathQuery(npc_x, npc_y, target_world_x, target_world_y)
+            path_response = self.navigator.find_path(query)
+            
+            if path_response.ok:
+                self.current_waypoints = path_response.waypoints
+                self.path_target = (target_world_x, target_world_y)
+                self.movement_target = (target_world_x, target_world_y)  # Set both for compatibility
+                self.active_movement = "move_to"
+                
+                # Calculate steps needed based on total path length
+                total_distance = path_response.total_cost
+                steps_needed = int(total_distance / self.npc.speed) + 10
+                self.movement_steps_remaining = min(steps_needed, 500)  # Higher cap for complex paths
+                
+                print(f"DEBUG: Hierarchical path found: {len(self.current_waypoints)} waypoints, {total_distance:.1f} total distance")
+                
+                # Take first step toward first waypoint
+                return self._move_toward_next_waypoint(engine_state)
+            else:
+                print(f"DEBUG: Hierarchical pathfinding failed: {path_response.reason}")
+                # Fall back to direct movement
+                return self._execute_direct_move_to(args, engine_state)
+        else:
+            # Fall back to direct movement if no navigator
+            return self._execute_direct_move_to(args, engine_state)
+    
+    def _execute_direct_move_to(self, args, engine_state: Dict[str, Any]) -> str:
+        """Fallback direct movement to target (original implementation)"""
+        target_world_x = args.x * 32
+        target_world_y = args.y * 32
+        npc_x, npc_y = self.npc.rect.centerx, self.npc.rect.centery
         
         # Set up autonomous movement to target
         self.movement_target = (target_world_x, target_world_y)
         self.active_movement = "move_to"
         
-        # Calculate how many steps needed (more generous estimate)
-        steps_needed = int(distance / self.npc.speed) + 10  # Add buffer for precision
-        self.movement_steps_remaining = min(steps_needed, 200)  # Cap at 200 steps for safety
+        # Calculate how many steps needed
+        dx = target_world_x - npc_x
+        dy = target_world_y - npc_y
+        distance = math.sqrt(dx*dx + dy*dy)
+        steps_needed = int(distance / self.npc.speed) + 10
+        self.movement_steps_remaining = min(steps_needed, 200)
         
-        print(f"DEBUG: Starting autonomous move_to: {steps_needed} steps to reach target")
+        print(f"DEBUG: Starting direct move_to: {steps_needed} steps to reach target")
         
         # Take first step
         if distance > 0:
@@ -397,7 +443,7 @@ class NPCController:
         # Check if movement succeeded
         if self.npc.rect.x != old_x or self.npc.rect.y != old_y:
             print(f"DEBUG: {self.npc.name} moved toward target to ({self.npc.rect.x}, {self.npc.rect.y})")
-            self.cooldowns["move"] = 200  # Shorter cooldown for autonomous movement
+            self.cooldowns["move"] = 200
             self.movement_steps_remaining -= 1
             return "ok"
         else:
@@ -406,6 +452,115 @@ class NPCController:
             self.movement_target = None
             self.movement_steps_remaining = 0
             return "blocked:obstacle"
+    
+    def _move_toward_next_waypoint(self, engine_state: Dict[str, Any]) -> str:
+        """Move toward the next waypoint in the hierarchical path"""
+        if not self.current_waypoints:
+            # No waypoints left, we've reached the target
+            self.active_movement = None
+            self.movement_target = None
+            self.movement_steps_remaining = 0
+            return "ok"
+        
+        npc_x, npc_y = self.npc.rect.centerx, self.npc.rect.centery
+        
+        # Get next waypoint to move toward
+        if self.navigator:
+            next_waypoint = self.navigator.get_next_waypoint(npc_x, npc_y, self.current_waypoints, tolerance=16.0)
+        else:
+            # Fallback: use first waypoint if no navigator
+            next_waypoint = self.current_waypoints[0] if self.current_waypoints else None
+        
+        if not next_waypoint:
+            # All waypoints reached
+            print("DEBUG: All waypoints reached")
+            self.current_waypoints = []
+            self.active_movement = None
+            self.movement_target = None
+            self.movement_steps_remaining = 0
+            return "ok"
+        
+
+        
+        # Move toward next waypoint
+        target_x, target_y = next_waypoint
+        dx = target_x - npc_x
+        dy = target_y - npc_y
+        distance = math.sqrt(dx*dx + dy*dy)
+        
+        if distance > 0:
+            move_dx = (dx / distance) * self.npc.speed
+            move_dy = (dy / distance) * self.npc.speed
+        else:
+            return "ok"
+        
+        # Store original position
+        old_x, old_y = self.npc.rect.x, self.npc.rect.y
+        
+        # Attempt movement
+        walls = engine_state.get("walls", [])
+        other_characters = engine_state.get("characters", [])
+        
+        self.npc.move(move_dx, move_dy, walls, other_characters)
+        
+        # Check if movement succeeded
+        if self.npc.rect.x != old_x or self.npc.rect.y != old_y:
+            current_distance = math.sqrt((target_x - self.npc.rect.centerx)**2 + (target_y - self.npc.rect.centery)**2)
+            print(f"DEBUG: Moving toward waypoint ({target_x:.1f}, {target_y:.1f}), current pos ({self.npc.rect.centerx}, {self.npc.rect.centery}), distance: {current_distance:.1f}")
+            self.cooldowns["move"] = 200
+            self.movement_steps_remaining -= 1
+            
+            # Check if we've reached the current waypoint
+            if current_distance <= 16.0:  # Within tolerance
+                print(f"DEBUG: Reached waypoint ({target_x:.1f}, {target_y:.1f})")
+                # Remove this waypoint and continue to next
+                if self.current_waypoints and len(self.current_waypoints) > 0:
+                    # Find and remove the reached waypoint
+                    for i, wp in enumerate(self.current_waypoints):
+                        if wp == next_waypoint:
+                            self.current_waypoints.pop(i)
+                            print(f"DEBUG: Removed waypoint, {len(self.current_waypoints)} remaining")
+                            break
+            
+            # Only stop if we've truly reached the final destination or hit step limit
+            if self.movement_steps_remaining <= 0:
+                print("DEBUG: Move_to reached step limit")
+                self.active_movement = None
+                self.movement_target = None
+                self.current_waypoints = []
+                self.movement_steps_remaining = 0
+            elif not self.current_waypoints:
+                print("DEBUG: All waypoints reached - stopping movement")
+                self.active_movement = None
+                self.movement_target = None
+                self.movement_steps_remaining = 0
+            
+            return "ok"
+        else:
+            # Movement blocked, try to replan
+            print("DEBUG: Movement blocked, attempting to replan path")
+            if self.navigator and self.path_target:
+                query = PathQuery(npc_x, npc_y, self.path_target[0], self.path_target[1])
+                path_response = self.navigator.find_path(query)
+                
+                if path_response.ok:
+                    self.current_waypoints = path_response.waypoints
+                    print(f"DEBUG: Replanned path with {len(self.current_waypoints)} waypoints")
+                    return "ok"  # Try again next tick
+                else:
+                    print("DEBUG: Replanning failed, stopping movement")
+                    self.active_movement = None
+                    self.movement_target = None
+                    self.current_waypoints = []
+                    self.movement_steps_remaining = 0
+                    return "blocked:obstacle"
+            else:
+                # No navigator or target, stop movement
+                self.active_movement = None
+                self.movement_target = None
+                self.current_waypoints = []
+                self.movement_steps_remaining = 0
+                return "blocked:obstacle"
     
     def _execute_interact(self, args, engine_state: Dict[str, Any]) -> str:
         """Execute interact action"""
@@ -483,8 +638,15 @@ class NPCController:
         return "invalid: Transfer failed"
     
     def _continue_move_to(self, args, engine_state: Dict[str, Any]) -> str:
-        """Continue autonomous move_to movement"""
+        """Continue autonomous move_to movement using waypoints"""
         
+
+        
+        # Use waypoint-based movement if available
+        if self.current_waypoints:
+            return self._move_toward_next_waypoint(engine_state)
+        
+        # Fall back to direct movement
         if not self.movement_target:
             # No target set, stop movement
             self.active_movement = None
@@ -588,6 +750,27 @@ class NPCController:
         steps_per_tile = 32 // self.npc.speed  # 32 pixels per tile / pixels per step
         self.movement_steps_per_command = max(1, int(tiles * steps_per_tile)) - 1  # -1 because first step is immediate
         print(f"Movement distance set to {tiles} tiles ({self.movement_steps_per_command + 1} steps)")
+    
+    def initialize_navigation(self, grid_width: int, grid_height: int, walls: List):
+        """
+        Initialize the hierarchical navigation system.
+        
+        Args:
+            grid_width: Width of the game world in tiles
+            grid_height: Height of the game world in tiles
+            walls: List of wall rectangles (pygame.Rect objects)
+        """
+        print(f"Initializing navigation system: {grid_width}x{grid_height} grid")
+        
+        self.navigator = HierarchicalNavigator(grid_width, grid_height)
+        self.navigator.set_tiles_from_walls(walls)
+        self.navigator.build_regions_and_portals()
+        
+        print(f"Navigation initialized: {len(self.navigator.regions)} regions, {len(self.navigator.portals)} portals")
+        
+        # Debug print for small grids
+        if grid_width <= 50 and grid_height <= 50:
+            self.navigator.debug_print_grid(highlight_regions=True)
     
     @property
     def idle_behavior_enabled(self):

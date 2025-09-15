@@ -318,6 +318,7 @@ class GameWithLLMNPC:
         
         # Game objects
         self.player = Player(400, 450)
+        self.shop = Shop()
         
         # *** KEY CHANGE: Use LLM-driven shopkeeper instead of regular NPC ***
         self.shopkeeper = create_llm_shopkeeper(400, 250)
@@ -325,7 +326,12 @@ class GameWithLLMNPC:
         # Configure NPC behavior - only respond when spoken to
         self.shopkeeper.llm_controller.enable_idle_behavior(False)
         
-        self.shop = Shop()
+        # *** NEW: Initialize hierarchical navigation system ***
+        grid_width = SCREEN_WIDTH // TILE_SIZE  # 25 tiles
+        grid_height = SCREEN_HEIGHT // TILE_SIZE  # 18 tiles
+        self.shopkeeper.llm_controller.initialize_navigation(grid_width, grid_height, self.shop.walls)
+        print(f"Navigation system initialized for {grid_width}x{grid_height} grid")
+        
         self.characters = [self.player, self.shopkeeper]
         
         # Game state

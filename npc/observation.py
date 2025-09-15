@@ -159,6 +159,22 @@ def build_observation(engine_state: Dict[str, Any]) -> Dict[str, Any]:
     if hasattr(npc, 'get_inventory_list'):
         npc_inventory = npc.get_inventory_list()
     
+    # Get navigation info if available
+    navigation_info = {}
+    if hasattr(npc, 'llm_controller') and hasattr(npc.llm_controller, 'current_waypoints'):
+        if npc.llm_controller.current_waypoints:
+            # Convert waypoints to tile coordinates for LLM
+            waypoint_tiles = []
+            for wx, wy in npc.llm_controller.current_waypoints:
+                tile_x, tile_y = world_to_tile(int(wx), int(wy))
+                waypoint_tiles.append([tile_x, tile_y])
+            navigation_info["waypoints"] = waypoint_tiles[:3]  # Show only next 3 waypoints
+        
+        if hasattr(npc.llm_controller, 'path_target') and npc.llm_controller.path_target:
+            target_x, target_y = npc.llm_controller.path_target
+            target_tile_x, target_tile_y = world_to_tile(int(target_x), int(target_y))
+            navigation_info["target"] = [target_tile_x, target_tile_y]
+    
     # Build the observation
     observation = {
         "npc": {
@@ -181,6 +197,10 @@ def build_observation(engine_state: Dict[str, Any]) -> Dict[str, Any]:
         "last_result": last_result,
         "tick": tick
     }
+    
+    # Add navigation info if available
+    if navigation_info:
+        observation["navigation"] = navigation_info
     
     # *** DEBUG: Log the observation details ***
     print("=" * 60)

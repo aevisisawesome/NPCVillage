@@ -21,8 +21,8 @@ class LLMDrivenNPC:
         # Initialize base NPC properties (from original NPC class)
         self.x = x
         self.y = y
-        self.width = 32 - 4
-        self.height = 32 - 4
+        self.width = 32 - 12  # Reduced collision box for easier doorway navigation
+        self.height = 32 - 12  # Reduced collision box for easier doorway navigation
         self.speed = 4  # Match player speed for more visible movement
         self.rect = pygame.Rect(x, y, self.width, self.height)
         

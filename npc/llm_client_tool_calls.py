@@ -184,10 +184,39 @@ Use the appropriate function for each action. Choose movement distances based on
         # Format observation for LLM
         obs_json = json.dumps(observation, indent=2)
         
-        # Build user message
-        user_message = f"OBSERVATION:\n{obs_json}"
-        if memory:
-            user_message = f"{memory}\n\n{user_message}"
+        # Extract player message from observation
+        player_message = observation.get("player", {}).get("last_said", "")
+        
+        # Build user message with consistent format
+        user_message_parts = [
+            "SYSTEM_REMINDER:",
+            "- Output **one** JSON object. No extra text.",
+            "- If unsure, ask a 1-line question via `say`.",
+            ""
+        ]
+        
+        # Add dialogue context if available
+        if memory and "RECENT CONVERSATION:" in memory:
+            user_message_parts.extend([
+                memory,
+                ""
+            ])
+        
+        # Add observation
+        user_message_parts.extend([
+            "OBSERVATION:",
+            obs_json,
+            ""
+        ])
+        
+        # Add player message
+        if player_message:
+            user_message_parts.extend([
+                "PLAYER_MESSAGE:",
+                f'"{player_message}"'
+            ])
+        
+        user_message = "\n".join(user_message_parts)
         
         # *** DEBUG: Log the complete user message being sent to LLM ***
         print("=" * 80)

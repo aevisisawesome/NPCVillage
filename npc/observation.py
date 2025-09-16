@@ -101,11 +101,20 @@ def build_observation(engine_state: Dict[str, Any]) -> Dict[str, Any]:
                         ascii_char = 'D'
                         break
             
-            # Add player and NPC to ASCII view only (not in the grid legend)
+            # Add characters to ASCII view only (not in the grid legend)
             if tile_x == player_tile_x and tile_y == player_tile_y:
                 ascii_char = 'P'
             elif tile_x == npc_tile_x and tile_y == npc_tile_y:
                 ascii_char = 'N'
+            else:
+                # Check for other NPCs at this tile
+                characters = engine_state.get("characters", [])
+                for character in characters:
+                    if character != npc and hasattr(character, 'rect'):
+                        char_tile_x, char_tile_y = world_to_tile(character.rect.centerx, character.rect.centery)
+                        if tile_x == char_tile_x and tile_y == char_tile_y:
+                            ascii_char = 'C'  # Other Character
+                            break
             
             grid_row += tile_char
             ascii_row += ascii_char
@@ -122,6 +131,25 @@ def build_observation(engine_state: Dict[str, Any]) -> Dict[str, Any]:
         "kind": "player", 
         "pos": [player_tile_x, player_tile_y]
     })
+    
+    # Add other characters (NPCs) as visible entities
+    characters = engine_state.get("characters", [])
+    for character in characters:
+        if character != npc and hasattr(character, 'rect'):  # Don't include self
+            char_tile_x, char_tile_y = world_to_tile(character.rect.centerx, character.rect.centery)
+            
+            # Check if character is within the observation window
+            if (origin_tile_x <= char_tile_x < origin_tile_x + grid_size and
+                origin_tile_y <= char_tile_y < origin_tile_y + grid_size):
+                
+                char_name = getattr(character, 'name', 'unknown_npc')
+                char_type = getattr(character, 'character_type', 'npc')
+                
+                visible_entities.append({
+                    "id": char_name.lower().replace(' ', '_'),
+                    "kind": char_type,
+                    "pos": [char_tile_x, char_tile_y]
+                })
     
     # Add other entities
     for entity in entities:

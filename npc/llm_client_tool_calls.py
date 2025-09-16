@@ -167,7 +167,7 @@ Use the appropriate function for each action. Choose movement distances based on
             }
         ]
     
-    def decide(self, observation: Dict[str, Any], memory: Optional[str] = None) -> Tuple[str, str]:
+    def decide(self, observation: Dict[str, Any], memory: Optional[str] = None, character_description: Optional[str] = None) -> Tuple[str, str]:
         """
         Get LLM decision based on observation using tool calls.
         
@@ -194,6 +194,14 @@ Use the appropriate function for each action. Choose movement distances based on
             "- If unsure, ask a 1-line question via `say`.",
             ""
         ]
+        
+        # Add character description if provided
+        if character_description:
+            user_message_parts.extend([
+                "CHARACTER:",
+                character_description,
+                ""
+            ])
         
         # Add dialogue context if available
         if memory and "RECENT CONVERSATION:" in memory:

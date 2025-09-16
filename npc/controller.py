@@ -196,7 +196,11 @@ class NPCController:
             # Step 2: Get LLM decision with dialogue history
             dialogue_context = self._build_dialogue_context()
             combined_memory = f"{self.memory}\n\n{dialogue_context}" if self.memory else dialogue_context
-            raw_response, llm_error = self.llm_client.decide(observation, combined_memory)
+            
+            # Get character description from NPC if available
+            character_description = getattr(self.npc, 'character_description', None)
+            
+            raw_response, llm_error = self.llm_client.decide(observation, combined_memory, character_description)
             
             if llm_error:
                 self.last_result = llm_error

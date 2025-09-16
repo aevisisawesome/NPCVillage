@@ -15,7 +15,7 @@ from queue import Queue
 import time
 
 # Import the new LLM NPC system
-from zelda_game_llm_integration import LLMDrivenNPC, create_llm_shopkeeper
+from zelda_game_llm_integration import LLMDrivenNPC, create_llm_shopkeeper, create_llm_innkeeper
 
 # Copy the essential classes from the original game
 # (In practice, you'd modify the original file directly)
@@ -159,7 +159,7 @@ class Player:
             self.notify_nearby_characters(message, notify_characters)
     
     def notify_nearby_characters(self, message, characters):
-        hearing_distance = 300
+        hearing_distance = 150  # Reduced from 300 to prevent cross-building hearing
         
         for char in characters:
             if char != self:
@@ -253,7 +253,7 @@ class Shop:
         self.walls = [
             pygame.Rect(300, 200, 200, 10),  # Top wall
             pygame.Rect(300, 390, 80, 10),   # Bottom left
-            pygame.Rect(420, 390, 80, 10),   # Bottom right
+            pygame.Rect(420, 390, 80, 10),   # Bottom right (40 pixel gap = 1.25 tiles)
             pygame.Rect(300, 200, 10, 190),  # Left wall
             pygame.Rect(490, 200, 10, 190),  # Right wall
         ]
@@ -261,6 +261,8 @@ class Shop:
         self.counter = pygame.Rect(350, 240, 100, 20)
         self.interact_zone = pygame.Rect(350, 260, 100, 40)
         self.floor_area = pygame.Rect(310, 210, 180, 180)
+
+
     
     def draw_wooden_floor(self, screen):
         plank_height = 12
@@ -308,6 +310,87 @@ class Shop:
         pygame.draw.rect(screen, BROWN, self.counter)
         pygame.draw.rect(screen, BLACK, self.counter, 2)
 
+# Complete Tavern class with proper methods
+class Tavern:
+    def __init__(self):
+        # Position tavern to the right of the shop
+        self.walls = [
+            pygame.Rect(550, 200, 200, 10),  # Top wall
+            pygame.Rect(550, 390, 70, 10),   # Bottom left (shorter)
+            pygame.Rect(680, 390, 70, 10),   # Bottom right (shorter, 60 pixel gap = ~2 tiles)
+            pygame.Rect(550, 200, 10, 190),  # Left wall
+            pygame.Rect(740, 200, 10, 190),  # Right wall
+        ]
+        
+        # Tavern has a bar counter and tables
+        self.bar_counter = pygame.Rect(600, 240, 100, 20)
+        self.interact_zone = pygame.Rect(600, 260, 100, 40)
+        self.floor_area = pygame.Rect(560, 210, 180, 180)
+        
+        # Add some tavern tables for decoration
+        self.tables = [
+            pygame.Rect(580, 320, 30, 30),
+            pygame.Rect(680, 320, 30, 30),
+        ]
+
+    def draw_stone_floor(self, screen):
+        """Draw stone floor for tavern"""
+        stone_size = 16
+        colors = [(120, 120, 120), (140, 140, 140), (100, 100, 100)]
+        mortar_color = (80, 80, 80)
+        
+        for row_index, y in enumerate(range(self.floor_area.top, self.floor_area.bottom, stone_size)):
+            for col_index, x in enumerate(range(self.floor_area.left, self.floor_area.right, stone_size)):
+                # Use position-based seeding for consistent pattern
+                random.seed(row_index * 1000 + col_index)
+                color = random.choice(colors)
+                random.seed()  # Reset seed
+                
+                stone_rect = pygame.Rect(x, y, stone_size, stone_size)
+                clipped_rect = stone_rect.clip(self.floor_area)
+                
+                if clipped_rect.width > 0 and clipped_rect.height > 0:
+                    pygame.draw.rect(screen, color, clipped_rect)
+                    
+                    # Draw mortar lines
+                    if x + stone_size < self.floor_area.right:
+                        pygame.draw.line(screen, mortar_color, 
+                                       (x + stone_size, clipped_rect.top), 
+                                       (x + stone_size, clipped_rect.bottom), 1)
+                    if y + stone_size < self.floor_area.bottom:
+                        pygame.draw.line(screen, mortar_color, 
+                                       (clipped_rect.left, y + stone_size), 
+                                       (clipped_rect.right, y + stone_size), 1)
+
+    def draw(self, screen):
+        """Draw the tavern with stone floor and darker wood"""
+        self.draw_stone_floor(screen)
+        
+        # Draw walls in darker wood
+        dark_brown = (101, 67, 33)
+        for wall in self.walls:
+            pygame.draw.rect(screen, dark_brown, wall)
+        
+        # Draw bar counter in darker wood
+        pygame.draw.rect(screen, dark_brown, self.bar_counter)
+        pygame.draw.rect(screen, BLACK, self.bar_counter, 2)
+        
+        # Draw tables
+        table_color = (139, 90, 43)
+        for table in self.tables:
+            pygame.draw.rect(screen, table_color, table)
+            pygame.draw.rect(screen, BLACK, table, 2)
+        
+        # Draw bar counter in darker wood
+        pygame.draw.rect(screen, dark_brown, self.bar_counter)
+        pygame.draw.rect(screen, BLACK, self.bar_counter, 2)
+        
+        # Draw tables
+        table_color = (139, 90, 43)
+        for table in self.tables:
+            pygame.draw.rect(screen, table_color, table)
+            pygame.draw.rect(screen, BLACK, table, 2)
+
 # Modified Game class with LLM NPC integration
 class GameWithLLMNPC:
     def __init__(self):
@@ -319,23 +402,32 @@ class GameWithLLMNPC:
         # Game objects
         self.player = Player(400, 450)
         self.shop = Shop()
+        self.tavern = Tavern()
         
-        # *** KEY CHANGE: Use LLM-driven shopkeeper instead of regular NPC ***
+        # *** KEY CHANGE: Use LLM-driven NPCs ***
         self.shopkeeper = create_llm_shopkeeper(400, 250)
+        self.innkeeper = create_llm_innkeeper(650, 250)
         
         # Configure NPC behavior - only respond when spoken to
         self.shopkeeper.llm_controller.enable_idle_behavior(False)
+        self.innkeeper.llm_controller.enable_idle_behavior(False)
         
         # *** NEW: Initialize hierarchical navigation system ***
         grid_width = SCREEN_WIDTH // TILE_SIZE  # 25 tiles
         grid_height = SCREEN_HEIGHT // TILE_SIZE  # 18 tiles
-        self.shopkeeper.llm_controller.initialize_navigation(grid_width, grid_height, self.shop.walls)
+        
+        # Combine walls from both buildings for navigation
+        all_walls = self.shop.walls + self.tavern.walls + self.tavern.tables
+        
+        self.shopkeeper.llm_controller.initialize_navigation(grid_width, grid_height, all_walls)
+        self.innkeeper.llm_controller.initialize_navigation(grid_width, grid_height, all_walls)
         print(f"Navigation system initialized for {grid_width}x{grid_height} grid")
         
-        self.characters = [self.player, self.shopkeeper]
+        self.characters = [self.player, self.shopkeeper, self.innkeeper]
         
         # Game state
         self.show_shop_message = False
+        self.show_tavern_message = False
         self.text_input_active = False
         self.input_text = ""
         self.input_prompt = "What would you like to say? (Press Enter to send, Escape to cancel)"
@@ -367,14 +459,21 @@ class GameWithLLMNPC:
                         self.input_text = ""
                     elif event.key == pygame.K_t:  # Toggle idle behavior
                         current_idle = self.shopkeeper.llm_controller.idle_behavior_enabled
-                        self.shopkeeper.llm_controller.enable_idle_behavior(not current_idle, 0.2)
-                        print(f"Idle behavior: {'ON' if not current_idle else 'OFF'}")
+                        new_idle = not current_idle
+                        self.shopkeeper.llm_controller.enable_idle_behavior(new_idle, 0.2)
+                        self.innkeeper.llm_controller.enable_idle_behavior(new_idle, 0.2)
+                        print(f"Idle behavior: {'ON' if new_idle else 'OFF'}")
     
     def interact(self):
         if self.player.rect.colliderect(self.shop.interact_zone):
             self.show_shop_message = True
+            self.show_tavern_message = False
+        elif self.player.rect.colliderect(self.tavern.interact_zone):
+            self.show_tavern_message = True
+            self.show_shop_message = False
         else:
             self.show_shop_message = False
+            self.show_tavern_message = False
     
     def update(self):
         dt = self.clock.get_time()
@@ -395,24 +494,37 @@ class GameWithLLMNPC:
             self.player.is_moving = False
             
             if dx != 0 or dy != 0:
-                self.player.move(dx, dy, self.shop.walls, self.characters)
+                # Combine walls from both buildings
+                all_walls = self.shop.walls + self.tavern.walls + self.tavern.tables
+                self.player.move(dx, dy, all_walls, self.characters)
         
         self.player.update(dt)
         
-        # *** KEY CHANGE: Update LLM-driven NPC ***
-        self.shopkeeper.update(dt, self.shop.walls, self.characters, self.player)
+        # *** KEY CHANGE: Update LLM-driven NPCs ***
+        all_walls = self.shop.walls + self.tavern.walls + self.tavern.tables
+        self.shopkeeper.update(dt, all_walls, self.characters, self.player)
+        self.innkeeper.update(dt, all_walls, self.characters, self.player)
     
     def draw(self):
         self.screen.fill(GREEN)
         
         self.shop.draw(self.screen)
+        self.tavern.draw(self.screen)
         
         self.player.draw(self.screen)
         self.shopkeeper.draw(self.screen)
+        self.innkeeper.draw(self.screen)
         
         if self.show_shop_message:
             font = pygame.font.Font(None, 36)
             text = font.render("Welcome to the Equipment Shop!", True, WHITE)
+            text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, 100))
+            pygame.draw.rect(self.screen, BLACK, text_rect.inflate(20, 10))
+            self.screen.blit(text, text_rect)
+        
+        if self.show_tavern_message:
+            font = pygame.font.Font(None, 36)
+            text = font.render("Welcome to The Prancing Pony Tavern!", True, WHITE)
             text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, 100))
             pygame.draw.rect(self.screen, BLACK, text_rect.inflate(20, 10))
             self.screen.blit(text, text_rect)
@@ -425,7 +537,7 @@ class GameWithLLMNPC:
         instructions = [
             "Arrow Keys: Move",
             "Space: Interact (when near counter)",
-            "Enter: Say something to the LLM-driven shopkeeper",
+            "Enter: Say something to the LLM-driven NPCs",
             "T: Toggle NPC idle behavior (thinking out loud)",
             "ESC: Quit"
         ]
@@ -434,7 +546,7 @@ class GameWithLLMNPC:
             self.screen.blit(text, (10, 10 + i * 25))
         
         # LLM Status
-        llm_status = "LLM NPC: Active" if self.shopkeeper.llm_controller else "LLM NPC: Disabled"
+        llm_status = "LLM NPCs: Active" if self.shopkeeper.llm_controller else "LLM NPCs: Disabled"
         status_color = GREEN if self.shopkeeper.llm_controller else RED
         status_text = font.render(llm_status, True, status_color)
         self.screen.blit(status_text, (10, SCREEN_HEIGHT - 30))
@@ -470,7 +582,8 @@ class GameWithLLMNPC:
         from llm_config import print_config_info
         print_config_info()
         
-        print("Walk near the shopkeeper and press Enter to talk!")
+        print("Walk near the shopkeeper or innkeeper and press Enter to talk!")
+        print("Visit the Equipment Shop (left) or The Prancing Pony Tavern (right)!")
         
         while self.running:
             self.handle_events()

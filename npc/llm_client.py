@@ -29,7 +29,7 @@ class LLMClient:
             print("WARNING: System prompt file not found, using empty prompt")
             self.system_prompt = ""
     
-    def decide(self, observation: Dict[str, Any], memory: Optional[str] = None) -> Tuple[str, str]:
+    def decide(self, observation: Dict[str, Any], memory: Optional[str] = None, character_description: Optional[str] = None) -> Tuple[str, str]:
         """
         Get LLM decision based on observation.
         
@@ -56,6 +56,14 @@ class LLMClient:
             "- If unsure, ask a 1-line question via `say`.",
             ""
         ]
+        
+        # Add character description if provided
+        if character_description:
+            user_message_parts.extend([
+                "CHARACTER:",
+                character_description,
+                ""
+            ])
         
         # Add dialogue context if available
         if memory and "RECENT CONVERSATION:" in memory:

@@ -65,11 +65,17 @@ class LLMDrivenNPC:
         # Game integration
         self.last_player_speech = None
         self.last_player_speech_time = 0
+        self.recent_speech_from = None  # Track who spoke to us recently
         
-        # Set role-specific properties
+        # Set role-specific properties and character description
         if npc_role == "shopkeeper":
             self.set_role_appearance("shopkeeper")
             self.stock_shop()
+            self.character_description = self.get_shopkeeper_description()
+        elif npc_role == "innkeeper":
+            self.character_description = self.get_innkeeper_description()
+        else:
+            self.character_description = f"You are {name}, a {npc_role}. Act according to your role."
         
         # By default, only respond when spoken to
         self.llm_controller.enable_idle_behavior(False)
@@ -77,6 +83,26 @@ class LLMDrivenNPC:
         # Set movement distance to 2 tiles for visible movement
         self.llm_controller.set_movement_distance(2.0)
     
+    def get_shopkeeper_description(self):
+        """Get character description for Garruk the shopkeeper"""
+        return """You are **Garruk Ironhand**, a grizzled shopkeeper who runs an equipment shop. 
+
+PERSONALITY: Blunt, impatient, and practical. You speak in short, direct sentences. You've been running this shop for decades and have little patience for small talk, but you're honest in your dealings.
+
+BACKGROUND: You're a former adventurer who settled down to run this equipment shop. You know the value of good gear and take pride in your inventory. You've seen many heroes come and go.
+
+SPEECH STYLE: Gruff and to the point. Use short sentences. Occasionally grumble about business or reminisce briefly about your adventuring days."""
+
+    def get_innkeeper_description(self):
+        """Get character description for Marta the innkeeper"""
+        return """You are **Marta Brewkeeper**, the warm-hearted innkeeper of The Prancing Pony Tavern.
+
+PERSONALITY: Friendly, welcoming, and chatty. You genuinely care about your guests and love hearing stories from travelers. You're the social heart of the community.
+
+BACKGROUND: You inherited the tavern from your family and have been running it for years. You know all the local gossip and news. You take pride in your ale, food, and comfortable rooms.
+
+SPEECH STYLE: Warm and conversational. You often ask about travelers' journeys and share local news. You're more talkative than most, but still keep responses concise."""
+
     def set_role_appearance(self, role):
         """Set appearance based on NPC role"""
         if role == "shopkeeper":
@@ -84,6 +110,11 @@ class LLMDrivenNPC:
             self.inventory = [None] * self.inventory_size
             self.gold = 500
             self.llm_controller.set_goals(["greet player", "sell items", "discuss inventory"])
+        elif role == "innkeeper":
+            self.inventory_size = 10
+            self.inventory = [None] * self.inventory_size
+            self.gold = 300
+            self.llm_controller.set_goals(["welcome travelers", "serve drinks and food", "offer rooms for rent"])
     
     def stock_shop(self):
         """Stock the shop with initial items"""
@@ -212,6 +243,13 @@ class LLMDrivenNPC:
         self.speech_text = message
         self.speech_timer = 0
     
+    def react_to_speech(self, message, speaker):
+        """React to speech from nearby characters (called by hearing system)"""
+        print(f"DEBUG: {self.name} heard '{message}' from {speaker.name}")
+        self.last_player_speech = message
+        self.last_player_speech_time = time.time() * 1000
+        self.recent_speech_from = speaker
+    
     def update(self, dt, walls, other_characters, player):
         """Update NPC with LLM-driven behavior"""
         
@@ -232,16 +270,18 @@ class LLMDrivenNPC:
                 self.speech_text = ""
                 self.speech_timer = 0
         
-        # Check if player spoke recently
+        # Check if someone spoke to us recently (via react_to_speech)
         player_spoke = False
-        if (hasattr(player, 'speech_text') and player.speech_text and 
-            player.speech_text != self.last_player_speech):
-            self.last_player_speech = player.speech_text
-            self.last_player_speech_time = time.time() * 1000
-            player_spoke = True
-        
-        # Prepare engine state for LLM controller
         current_time = time.time() * 1000
+        
+        # Only consider it "recent" if it happened within the last 500ms
+        if (self.last_player_speech and 
+            current_time - self.last_player_speech_time < 500):
+            player_spoke = True
+            # Clear the speech after processing to avoid repeated responses
+            self.last_player_speech = None
+        
+        # Prepare engine state for LLM controller (current_time already defined above)
         
         # Create simple entities list (doors, etc.)
         entities = []
@@ -366,6 +406,47 @@ class LLMDrivenNPC:
 def create_llm_shopkeeper(x, y):
     """Factory function to create an LLM-driven shopkeeper"""
     return LLMDrivenNPC(x, y, "Garruk Ironhand", "shopkeeper")
+
+def create_llm_innkeeper(x, y):
+    """Factory function to create an LLM-driven innkeeper"""
+    innkeeper = LLMDrivenNPC(x, y, "Marta Brewkeeper", "innkeeper")
+    
+    # Set innkeeper-specific appearance
+    innkeeper.shirt_color = (139, 69, 19)  # Brown shirt
+    innkeeper.hair_color = (160, 82, 45)   # Auburn hair
+    innkeeper.pants_color = (85, 107, 47)  # Dark olive pants
+    innkeeper.hud_color = (255, 140, 0)    # Orange HUD
+    
+    # Set innkeeper-specific properties
+    innkeeper.inventory_size = 10
+    innkeeper.inventory = [None] * innkeeper.inventory_size
+    innkeeper.gold = 300
+    
+    # Stock tavern with drinks and food
+    tavern_items = [
+        ("ale", 8),
+        ("wine", 4),
+        ("bread", 6),
+        ("cheese", 5),
+        ("stew", 3),
+        ("room_key", 2)
+    ]
+    
+    for item_id, quantity in tavern_items:
+        innkeeper.add_item(item_id, quantity)
+    
+    # Set innkeeper-specific role properties
+    innkeeper.set_role_appearance("innkeeper")
+    
+    # Set innkeeper goals
+    innkeeper.llm_controller.set_goals([
+        "welcome travelers", 
+        "serve drinks and food", 
+        "offer rooms for rent",
+        "share local gossip"
+    ])
+    
+    return innkeeper
 
 
 # Example of how to integrate into the main game
